@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Data - Travel Survey Analysis</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .upload-container {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
+        .upload-icon {
+            font-size: 4rem;
+            color: #6a11cb;
+            margin-bottom: 1rem;
+        }
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 0.5rem;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-area.highlight { /* Added class for highlighting */
+            border-color: #6a11cb;
+            background-color: #f0eaff; /* Light purple background */
+        }
+        .file-input {
+            display: none;
+        }
+        .btn-primary {
+            background-image: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+        }
+        .btn-primary:hover {
+            background-image: linear-gradient(135deg, #5810b5 0%, #1e6be0 100%);
+        }
+        .upload-status {
+            margin-top: 2rem;
+            display: none; /* Initially hidden */
+            padding: 1rem;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            background-color: #f8f9fa;
+        }
+         .upload-status h5 { margin-bottom: 0.5rem; word-break: break-all;}
+        footer {
+            background-color: #343a40;
+            color: white;
+            padding: 2rem 0;
+            margin-top: 2rem;
+        }
+        .progress {
+            height: 25px;
+            margin-top: 1rem;
+            font-size: 0.9rem; /* Make text inside visible */
+        }
+        #status-text { font-weight: bold; }
+        .alert { margin-top: 1rem; } /* Add space for alerts */
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">Travel Survey Analysis</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="upload.html">Upload Data</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="analysis.html">Survey Analysis</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="upload-container">
+                    <h2 class="text-center mb-4">Upload Survey Data</h2>
+                    <p class="text-center text-muted mb-4">Upload an Excel file (.xlsx or .xls) containing the survey results. New uploads will replace existing data.</p>
+
+                    <!-- Alert for messages -->
+                    <div id="alert-message" class="alert" role="alert" style="display: none;"></div>
+
+                    <div class="upload-area" id="upload-area">
+                        <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                        <h4>Drag & Drop Your Excel File Here</h4>
+                        <p class="text-muted">or</p>
+                        <button class="btn btn-primary" type="button" onclick="document.getElementById('file-input').click()">Browse Files</button>
+                        <input type="file" id="file-input" class="file-input" accept=".xlsx, .xls" onchange="handleFileSelect(event)">
+                         <p class="text-muted mt-2"><small>Max file size: 10MB</small></p>
+                    </div>
+
+                    <div class="upload-status" id="upload-status">
+                        <h5>Uploading File: <span id="file-name"></span></h5>
+                        <!-- Note: Basic fetch doesn't support real-time progress easily. -->
+                        <!-- Consider XMLHttpRequest for progress tracking if needed. -->
+                        <div class="progress">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="progress-bar" style="width: 100%">Processing...</div>
+                        </div>
+                        <div class="text-center mt-3">
+                            <span id="status-text">Please wait...</span>
+                            <!-- Cancel button removed as fetch cancel is complex and might not stop server processing -->
+                            <!-- <button class="btn btn-sm btn-danger" onclick="cancelUpload()">Cancel</button> -->
+                        </div>
+                    </div>
+
+                    <div class="mt-4 p-3 bg-light border rounded">
+                        <h5>File Requirements:</h5>
+                        <ul>
+                            <li>Format: Excel (.xlsx or .xls)</li>
+                            <li>Required Columns (Exact Headers):
+                                <ul>
+                                    <li><code>Couple No</code> (Unique number for each couple)</li>
+                                    <li><code>Men Age</code> (Number)</li>
+                                    <li><code>Women Age</code> (Number)</li>
+                                    <li><code>Marriage Duration</code> (Number, years married)</li>
+                                    <li><code>Travel Plan</code> (Text, name of the plan)</li>
+                                </ul>
+                            </li>
+                             <li>Data should start from the second row (first row is headers).</li>
+                            <li>Ensure no blank rows within the data range.</li>
+                            <li>Maximum file size: 10MB</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4 mb-4">
+                    <a href="analysis.html" class="btn btn-outline-secondary">View Current Analysis</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center">
+        <div class="container">
+            <p>© 2025 Travel Survey Analysis Tool. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const uploadStatusDiv = document.getElementById('upload-status');
+        const fileNameSpan = document.getElementById('file-name');
+        const progressBar = document.getElementById('progress-bar');
+        const statusTextSpan = document.getElementById('status-text');
+        const alertMessageDiv = document.getElementById('alert-message');
+
+        // --- Drag and Drop ---
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false); // Prevent browser opening file
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => highlight(true), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => highlight(false), false);
+        });
+
+        function highlight(isHighlighted) {
+            if (isHighlighted) {
+                uploadArea.classList.add('highlight');
+            } else {
+                uploadArea.classList.remove('highlight');
+            }
+        }
+
+        uploadArea.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                 handleFile(files[0]);
+            }
+        }
+
+        // --- File Selection ---
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+
+        // --- File Handling & Upload ---
+         function handleFile(file) {
+             // Basic validation client-side
+             if (!file) {
+                 showAlert('No file selected.', 'warning');
+                 return;
+             }
+
+             const validExtensions = ['xlsx', 'xls'];
+             const fileExtension = file.name.split('.').pop()?.toLowerCase();
+             if (!fileExtension || !validExtensions.includes(fileExtension)) {
+                  showAlert(`Invalid file type: .${fileExtension}. Please upload .xlsx or .xls files.`, 'danger');
+                  resetUploadState();
+                 return;
+             }
+
+             if (file.size > 10 * 1024 * 1024) { // 10 MB
+                 showAlert('File is too large. Maximum size is 10MB.', 'danger');
+                 resetUploadState();
+                 return;
+             }
+
+             // Prepare for upload
+             hideAlert();
+             uploadStatusDiv.style.display = 'block';
+             fileNameSpan.textContent = file.name;
+             progressBar.style.width = '100%'; // Indicate processing, not % progress
+             progressBar.classList.add('progress-bar-animated');
+             statusTextSpan.textContent = 'Uploading and processing...';
+
+
+             const formData = new FormData();
+             formData.append('surveyFile', file);
+
+             // Make the API call
+             fetch('/upload', {
+                 method: 'POST',
+                 body: formData
+             })
+             .then(async response => {
+                 const responseBody = await response.json().catch(() => ({ // Catch JSON parsing errors for non-JSON responses
+                    error: `Server returned non-JSON response with status ${response.status}`,
+                    details: 'Check server logs for more details.'
+                 }));
+
+                 if (!response.ok) {
+                     // Throw an error that includes details from the JSON body if available
+                     throw new Error(responseBody.error || `HTTP error ${response.status}`);
+                 }
+                 return responseBody; // Contains { success: true, message: '...', count: ... }
+             })
+             .then(data => {
+                 // Handle success
+                  progressBar.classList.remove('progress-bar-animated');
+                  progressBar.classList.add('bg-success');
+                  statusTextSpan.textContent = `Success! ${data.message || (data.count + ' records processed.')}`;
+                  showAlert(`Upload successful! ${data.count} records processed. Redirecting to analysis...`, 'success');
+
+                 // Redirect after a short delay
+                 setTimeout(() => {
+                     window.location.href = 'analysis.html';
+                 }, 2500); // 2.5 seconds delay
+             })
+             .catch(error => {
+                 // Handle errors (network, server-side, etc.)
+                 console.error('Upload error:', error);
+                  progressBar.classList.remove('progress-bar-animated');
+                  progressBar.classList.add('bg-danger');
+                  progressBar.style.width = '100%'; // Keep bar full on error
+                  statusTextSpan.textContent = 'Upload Failed.';
+                  showAlert(`Error: ${error.message}`, 'danger');
+
+                  // Optionally hide progress after a delay on error
+                  // setTimeout(resetUploadState, 5000);
+             });
+         }
+
+         // --- UI Helpers ---
+         function showAlert(message, type = 'danger') { // type can be success, danger, warning, info
+             alertMessageDiv.className = `alert alert-${type}`; // Reset classes and set new type
+             alertMessageDiv.textContent = message;
+             alertMessageDiv.style.display = 'block';
+         }
+
+         function hideAlert() {
+             alertMessageDiv.style.display = 'none';
+         }
+
+         function resetUploadState() {
+            uploadStatusDiv.style.display = 'none';
+            progressBar.style.width = '0%';
+            progressBar.classList.remove('bg-success', 'bg-danger');
+            progressBar.classList.add('progress-bar-animated');
+            fileInput.value = ''; // Clear the file input
+         }
+
+         // Cancel function (if needed, though fetch cancel is tricky)
+         // function cancelUpload() {
+         //     console.log("Upload cancellation requested (UI only).");
+         //     resetUploadState();
+         //     hideAlert();
+         //     // Note: This does NOT stop the actual network request if using fetch easily.
+         // }
+
+    </script>
+</body>
+</html>

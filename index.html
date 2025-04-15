@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Travel Survey Analysis</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .jumbotron {
+            background-image: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            padding: 4rem 2rem;
+            border-radius: 0.5rem;
+            margin-bottom: 2rem;
+        }
+        .card {
+            transition: all 0.3s ease;
+            border: none;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+        }
+        .card-img-top {
+            height: 180px;
+            object-fit: cover;
+            border-top-left-radius: 0.5rem;
+            border-top-right-radius: 0.5rem;
+            background-color: #eee; /* Placeholder background */
+        }
+        .btn-primary {
+            background-image: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+        }
+        .btn-primary:hover {
+            background-image: linear-gradient(135deg, #5810b5 0%, #1e6be0 100%);
+        }
+        footer {
+            background-color: #343a40;
+            color: white;
+            padding: 2rem 0;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">Travel Survey Analysis</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="index.html">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="upload.html">Upload Data</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="analysis.html">Survey Analysis</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container my-5">
+        <div class="jumbotron text-center">
+            <h1 class="display-4">Travel Plan Survey Analysis</h1>
+            <p class="lead">Analyze couple's travel preferences based on survey data.</p>
+            <hr class="my-4" style="border-top: 1px solid rgba(255, 255, 255, 0.3);">
+            <p>Upload your Excel data and gain insights into travel trends across different age groups.</p>
+            <a class="btn btn-light btn-lg" href="upload.html" role="button">Get Started</a>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card">
+                    <!-- Using the placeholder API defined in server.js -->
+                    <img src="/1.jpeg" class="card-img-top" alt="Upload Data Icon">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Upload Survey Data</h5>
+                        <p class="card-text">Easily upload your Excel file containing couple survey responses.</p>
+                        <a href="upload.html" class="btn btn-primary">Upload Now</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                     <img src="/2.jpeg" class="card-img-top" alt="Analysis Chart Icon">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">View Analysis</h5>
+                        <p class="card-text">Explore interactive charts and summaries of travel preferences.</p>
+                        <a href="analysis.html" class="btn btn-primary">View Analysis</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                     <img src="/3.jpeg" class="card-img-top" alt="Documentation Icon">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Data Requirements</h5>
+                        <p class="card-text">Check the required Excel format and column headers before uploading.</p>
+                        <a href="upload.html" class="btn btn-primary">Check Format</a> <!-- Link to upload page where format is listed -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center">
+        <div class="container">
+            <p>© 2025 Travel Survey Analysis Tool. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survey Analysis - Travel Survey Analysis</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <!-- Use Chart.js v3.x or v4.x, ensure consistency -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .analysis-container {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px; /* Adjust as needed */
+            width: 100%; /* Ensure width responsiveness */
+            margin-bottom: 2rem;
+        }
+        .info-card {
+            background-image: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            min-height: 150px; /* Ensure consistent height */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .info-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+        }
+        .info-card h4 { font-size: 1.1rem; }
+        .info-card h2 { font-size: 1.8rem; font-weight: bold; margin-top: auto; }
+
+        .tab-content {
+            padding: 1.5rem;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-bottom-left-radius: 0.25rem;
+            border-bottom-right-radius: 0.25rem;
+        }
+        .nav-tabs .nav-link { color: #6c757d; }
+        .nav-tabs .nav-link.active {
+            font-weight: bold;
+            border-top: 3px solid #6a11cb;
+            color: #495057;
+            background-color: #fff;
+            border-bottom-color: #fff; /* Cover bottom border */
+        }
+        footer {
+            background-color: #343a40;
+            color: white;
+            padding: 2rem 0;
+            margin-top: 2rem;
+        }
+        .table-container {
+            overflow-x: auto;
+            max-height: 400px; /* Limit height */
+            overflow-y: auto; /* Enable vertical scroll */
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th {
+            background-color: #e9ecef; /* Slightly darker header */
+            position: sticky;
+            top: 0;
+            z-index: 1; /* Ensure header stays above scrolling content */
+            border-bottom: 2px solid #dee2e6;
+        }
+        .data-table th, .data-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border: 1px solid #dee2e6;
+        }
+        .badge-travel-plan {
+            font-size: 0.85rem; /* Slightly smaller badge */
+            padding: 0.4em 0.7em; /* Adjust padding */
+            margin: 0.2rem;
+            display: inline-block;
+            white-space: nowrap; /* Prevent wrapping inside badge */
+        }
+        .refresh-btn {
+            background-color: transparent;
+            border: none;
+            color: #6c757d;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        .refresh-btn:hover {
+            transform: rotate(180deg);
+            color: #6a11cb;
+        }
+        .loading-spinner {
+            display: none; /* Hide by default */
+            margin-left: 10px;
+        }
+        .error-message {
+             display: none; /* Hide by default */
+             color: red;
+             margin-top: 1rem;
+        }
+        .card-body ul li span.badge { min-width: 100px; text-align: center; } /* Ensure badges align nicely */
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">Travel Survey Analysis</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="upload.html">Upload Data</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="analysis.html">Survey Analysis</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="analysis-container">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Survey Analysis Results</h2>
+                <button class="refresh-btn" onclick="refreshAnalysis()" title="Refresh Analysis">
+                    <i class="fas fa-sync-alt fa-2x"></i>
+                    <span class="spinner-border spinner-border-sm loading-spinner" role="status" aria-hidden="true" id="refresh-spinner"></span>
+                </button>
+            </div>
+             <div class="alert alert-danger error-message" role="alert" id="error-message">
+                Failed to load analysis data. Please try again later.
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="info-card">
+                        <i class="fas fa-users info-icon"></i>
+                        <h4>Total Couples</h4>
+                        <h2 id="total-couples">--</h2>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="info-card">
+                        <i class="fas fa-plane-departure info-icon"></i>
+                        <h4>Distinct Travel Plans</h4>
+                        <h2 id="total-plans">--</h2>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="info-card">
+                        <i class="fas fa-calendar-alt info-icon"></i>
+                        <h4>Last Updated</h4>
+                        <h2 id="last-updated" style="font-size: 1.2rem;">--</h2> <!-- Smaller font for date -->
+                    </div>
+                </div>
+            </div>
+
+            <ul class="nav nav-tabs" id="myTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary" type="button" role="tab" aria-controls="summary" aria-selected="true">Summary</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="older-tab" data-bs-toggle="tab" data-bs-target="#older" type="button" role="tab" aria-controls="older" aria-selected="false">Older Couples (50+)</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                     <button class="nav-link" id="younger-tab" data-bs-toggle="tab" data-bs-target="#younger" type="button" role="tab" aria-controls="younger" aria-selected="false">Younger Couples (<35)</button>
+                </li>
+                 <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="marriage-tab" data-bs-toggle="tab" data-bs-target="#marriage" type="button" role="tab" aria-controls="marriage" aria-selected="false">Marriage Duration</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="all-tab" data-bs-toggle="tab" data-bs-target="#all" type="button" role="tab" aria-controls="all" aria-selected="false">All Couples Analysis</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw" type="button" role="tab" aria-controls="raw" aria-selected="false">Raw Data</button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="myTabContent">
+                <!-- Summary Tab -->
+                <div class="tab-pane fade show active" id="summary" role="tabpanel" aria-labelledby="summary-tab">
+                    <h4>Overall Summary & Key Findings</h4>
+                     <div class="row">
+                        <div class="col-md-6">
+                            <h5>Age Distribution (All Couples)</h5>
+                            <div class="chart-container">
+                                <canvas id="summaryChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                             <div class="card mt-3 mt-md-0">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0">Key Travel Preferences</h5>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="list-group list-group-flush">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Most Popular Plan (All)
+                                            <span class="badge bg-info rounded-pill" id="older-favorite">--</span>
+                                        </li>
+                                         <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Most Liked Plan (Younger <35)
+                                            <span class="badge bg-success rounded-pill" id="younger-favorite">--</span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Most Disliked Plan (All)
+                                            <span class="badge bg-danger rounded-pill" id="all-disliked">--</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                             <div class="card mt-3" style="display:none;">
+                                 <div class="card-header bg-secondary text-white">
+                                     <h5 class="mb-0">Top 5 Overall Travel Plans</h5>
+                                 </div>
+                                 <div class="card-body" id="top-overall-plans">
+                                     <p>Loading...</p>
+                                     <!-- Populated by JS -->
+                                 </div>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Older Couples Tab -->
+                <div class="tab-pane fade" id="older" role="tabpanel" aria-labelledby="older-tab">
+                    <h4>Older Couples (Both Partners 50+) Travel Preferences</h4>
+                    <p>Analysis of travel preferences among <strong id="older-count">--</strong> couples where both partners are 50 years or older.</p>
+                     <div class="row">
+                        <div class="col-md-7">
+                             <h5>Preference Distribution</h5>
+                            <div class="chart-container">
+                                <canvas id="olderChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">
+                                    <h5 class="mb-0">Most Liked Travel Plans (%)</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="older-travel-plans">
+                                        <p>Loading data...</p>
+                                        <!-- Badges populated by JS -->
+                                    </div>
+                                </div>
+                            </div>
+                             <div class="card mt-3">
+                                <div class="card-header bg-warning text-dark"> <!-- Dark text on warning -->
+                                    <h5 class="mb-0">Avg. Marriage Duration: <span id="older-marriage">--</span> years</h5>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Younger Couples Tab -->
+                <div class="tab-pane fade" id="younger" role="tabpanel" aria-labelledby="younger-tab">
+                    <h4>Younger Couples (Both Partners < 35) Travel Preferences</h4>
+                     <p>Analysis of travel preferences among <strong id="younger-count">--</strong> couples where both partners are under 35 years old.</p>
+                     <div class="row">
+                        <div class="col-md-7">
+                            <h5>Preference Distribution</h5>
+                            <div class="chart-container">
+                                <canvas id="youngerChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="card">
+                                <div class="card-header bg-success text-white">
+                                    <h5 class="mb-0">Most Liked Travel Plans (%)</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="younger-travel-plans">
+                                        <p>Loading data...</p>
+                                        <!-- Badges populated by JS -->
+                                    </div>
+                                </div>
+                            </div>
+                             <div class="card mt-3">
+                                <div class="card-header bg-warning text-dark"> <!-- Dark text on warning -->
+                                     <h5 class="mb-0">Avg. Marriage Duration: <span id="younger-marriage">--</span> years</h5>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Marriage Duration Tab -->
+                <div class="tab-pane fade" id="marriage" role="tabpanel" aria-labelledby="marriage-tab">
+                    <h4>Analysis by Marriage Duration</h4>
+                    <p>Exploring travel preferences based on marriage duration.</p>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0">Couples Married < 10 Years</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Analysis of <strong id="short-marriage-count">--</strong> couples married for less than 10 years.</p>
+                                    <h6 class="card-title">Avg. Marriage Duration: <span id="short-marriage-avg">--</span> years</h6>
+                                    <div id="short-marriage-plans">
+                                        <p>Loading data...</p>
+                                        <!-- Badges populated by JS -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-success text-white">
+                                    <h5 class="mb-0">Couples Married 10+ Years</h5>
+                                </div>
+                                <div class="card-body">
+                                     <p>Analysis of <strong id="long-marriage-count">--</strong> couples married for 10 or more years.</p>
+                                    <h6 class="card-title">Avg. Marriage Duration: <span id="long-marriage-avg">--</span> years</h6>
+                                    <div id="long-marriage-plans">
+                                        <p>Loading data...</p>
+                                        <!-- Badges populated by JS -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="row mt-4">
+                        <div class="col-md-7">
+                            <h5>Travel Plan Preferences by Marriage Duration</h5>
+                            <div class="chart-container">
+                                <canvas id="marriageDurationChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">
+                                    <h5 class="mb-0">Key Observations</h5>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="list-group list-group-flush">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Top Plan (Short Marriage)
+                                            <span class="badge bg-primary rounded-pill" id="short-marriage-favorite">--</span>
+                                        </li>
+                                         <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Top Plan (Long Marriage)
+                                            <span class="badge bg-success rounded-pill" id="long-marriage-favorite">--</span>
+                                        </li>
+                                    </ul>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- All Couples Tab -->
+                 <div class="tab-pane fade" id="all" role="tabpanel" aria-labelledby="all-tab">
+                    <h4>All Couples Analysis</h4>
+                    <p>Comprehensive analysis across all <strong id="all-count-display">--</strong> couples.</p>
+                    <div class="row">
+                        <div class="col-md-7">
+                             <h5>Overall Travel Plan Popularity</h5>
+                            <div class="chart-container">
+                                <canvas id="allChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                             <div class="card">
+                                <div class="card-header bg-danger text-white">
+                                    <h5 class="mb-0">Least Popular Plans (Bottom 5)</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="disliked-travel-plans">
+                                         <p>Loading data...</p>
+                                        <!-- Badges populated by JS -->
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card mt-3">
+                                <div class="card-header bg-secondary text-white">
+                                    <h5 class="mb-0">Age Group Breakdown</h5>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table table-sm table-borderless">
+                                        <tbody id="age-distribution-table">
+                                             <tr><td>Loading...</td></tr>
+                                             <!-- Populated by JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Raw Data Tab -->
+                <div class="tab-pane fade" id="raw" role="tabpanel" aria-labelledby="raw-tab">
+                    <h4>Raw Survey Data</h4>
+                    <p>View the processed survey data stored in the database. Displaying <span id="raw-data-info">--</span> entries.</p>
+                     <div class="alert alert-danger error-message" role="alert" id="raw-data-error">
+                        Failed to load raw data.
+                     </div>
+                     <div class="table-container mb-3">
+                        <table class="table table-striped table-hover data-table">
+                            <thead>
+                                <tr>
+                                    <!-- Headers will be dynamically generated -->
+                                </tr>
+                            </thead>
+                            <tbody id="raw-data-table">
+                                <tr><td colspan="5" class="text-center">Loading data...</td></tr>
+                                <!-- Data rows will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                     <div class="d-flex justify-content-between align-items-center mt-3">
+                        <button class="btn btn-primary" id="load-more-btn" onclick="loadMoreData()" disabled>
+                            Load More
+                            <span class="spinner-border spinner-border-sm loading-spinner" role="status" aria-hidden="true" id="load-more-spinner"></span>
+                        </button>
+                        <span class="text-muted" id="raw-data-pagination-info"></span>
+                    </div>
+                </div>
+            </div> <!-- End Tab Content -->
+        </div> <!-- End Analysis Container -->
+    </div> <!-- End Container -->
+
+    <footer class="text-center">
+        <div class="container">
+            <p>© 2025 Travel Survey Analysis Tool. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Include Bootstrap JS Bundle (Popper included) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let charts = {}; // Store chart instances
+        let rawDataCurrentPage = 1;
+        const rawDataLimit = 10; // Number of rows per page
+        let rawDataTotalPages = 1;
+        let rawDataTotalEntries = 0;
+
+        // --- Utility Functions ---
+        function showLoading(spinnerId) {
+            const spinner = document.getElementById(spinnerId);
+            if (spinner) spinner.style.display = 'inline-block';
+        }
+
+        function hideLoading(spinnerId) {
+            const spinner = document.getElementById(spinnerId);
+            if (spinner) spinner.style.display = 'none';
+        }
+
+         function showError(elementId, message = 'An error occurred.') {
+            const errorElement = document.getElementById(elementId);
+            if (errorElement) {
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+            }
+        }
+
+        function hideError(elementId) {
+             const errorElement = document.getElementById(elementId);
+             if (errorElement) errorElement.style.display = 'none';
+        }
+
+        // --- Main Data Fetching and Processing ---
+        async function fetchData() {
+            clearAnalysisData(); // Clear existing data first
+            showLoading('refresh-spinner');
+            hideError('error-message');
+            try {
+                const response = await fetch('/api/analysis');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // Update DOM elements with fetched data
+                document.getElementById('total-couples').textContent = data.totalCouples ?? 'N/A';
+                document.getElementById('total-plans').textContent = data.totalPlans ?? 'N/A';
+                document.getElementById('last-updated').textContent = data.lastUpdated ? new Date(data.lastUpdated).toLocaleString() : 'N/A';
+                document.getElementById('older-count').textContent = data.olderCouplesAnalysis?.count ?? 'N/A';
+                document.getElementById('younger-count').textContent = data.youngerCouplesAnalysis?.count ?? 'N/A';
+                document.getElementById('all-count-display').textContent = data.totalCouples ?? 'N/A';
+
+                // Update Summary Quick Insights
+                document.getElementById('older-favorite').textContent = data.summary?.olderFavorite ?? 'N/A';
+                document.getElementById('younger-favorite').textContent = data.summary?.youngerFavorite ?? 'N/A';
+                document.getElementById('all-disliked').textContent = data.summary?.allDisliked ?? 'N/A';
+
+
+                // Update Older Couples Tab
+                document.getElementById('older-marriage').textContent = data.olderCouplesAnalysis?.avgMarriageDuration ?? 'N/A';
+                populateBadgeList('older-travel-plans', data.olderCouplesAnalysis?.preferences, 'bg-info');
+
+                // Update Younger Couples Tab
+                document.getElementById('younger-marriage').textContent = data.youngerCouplesAnalysis?.avgMarriageDuration ?? 'N/A';
+                populateBadgeList('younger-travel-plans', data.youngerCouplesAnalysis?.preferences, 'bg-success');
+
+                 // Update All Couples Tab - Disliked Plans
+                populateBadgeList('disliked-travel-plans', data.dislikedPlans, 'bg-danger', false); // Don't show percentage for disliked
+
+                // Update All Couples Tab - Age Distribution Table
+                populateAgeDistributionTable('age-distribution-table', data.ageDistribution);
+
+                // Update Summary - Top 5 Overall Plans List
+                populateTopOverallPlans('top-overall-plans', data.allPlansPopularity);
+
+                // Update charts with new data
+                updateCharts(data);
+
+            } catch (error) {
+                console.error('Data fetch failed:', error);
+                 showError('error-message', `Failed to load analysis data: ${error.message}. Please try again.`);
+                // Optionally clear old data or show placeholders
+                 clearAnalysisData();
+            } finally {
+                hideLoading('refresh-spinner');
+            }
+        }
+
+        function clearAnalysisData() {
+             // Reset text content
+            document.getElementById('total-couples').textContent = '--';
+            document.getElementById('total-plans').textContent = '--';
+            document.getElementById('last-updated').textContent = '--';
+            document.getElementById('older-count').textContent = '--';
+            document.getElementById('younger-count').textContent = '--';
+            document.getElementById('all-count-display').textContent = '--';
+            document.getElementById('older-favorite').textContent = '--';
+            document.getElementById('younger-favorite').textContent = '--';
+            document.getElementById('all-disliked').textContent = '--';
+            document.getElementById('older-marriage').textContent = '--';
+            document.getElementById('younger-marriage').textContent = '--';
+
+            // Clear dynamic lists/tables
+            document.getElementById('older-travel-plans').innerHTML = '<p>Data unavailable</p>';
+            document.getElementById('younger-travel-plans').innerHTML = '<p>Data unavailable</p>';
+            document.getElementById('disliked-travel-plans').innerHTML = '<p>Data unavailable</p>';
+            document.getElementById('age-distribution-table').innerHTML = '<tr><td>Data unavailable</td></tr>';
+            document.getElementById('top-overall-plans').innerHTML = '<p>Data unavailable</p>';
+
+             // Destroy existing charts if any
+            Object.values(charts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+            charts = {}; // Reset chart store
+        }
+
+
+        function populateBadgeList(elementId, preferences, badgeClass, showPercentage = true) {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+            if (!preferences || preferences.length === 0) {
+                container.innerHTML = '<p>No data available for this category.</p>';
+                return;
+            }
+            container.innerHTML = preferences.map(plan =>
+                `<span class="badge ${badgeClass} badge-travel-plan">
+                    ${plan.travel_plan} ${showPercentage ? `(${plan.percentage}%)` : `(${plan.count} votes)`}
+                 </span>`
+            ).join('');
+        }
+
+         function populateTopOverallPlans(elementId, allPlans) {
+            const container = document.getElementById(elementId);
+             if (!container) return;
+            if (!allPlans || allPlans.length === 0) {
+                container.innerHTML = '<p>No plan data available.</p>';
+                return;
+            }
+            // Assume allPlans is sorted DESC by count from server
+            const top5 = allPlans.slice(0, 5);
+            container.innerHTML = '<ul class="list-group list-group-flush">';
+            container.innerHTML += top5.map(plan =>
+                `<li class="list-group-item d-flex justify-content-between align-items-center">
+                    ${plan.travel_plan}
+                    <span class="badge bg-secondary rounded-pill">${plan.count}</span>
+                 </li>`
+            ).join('');
+             container.innerHTML += '</ul>';
+        }
+
+
+        function populateAgeDistributionTable(elementId, ageDistribution) {
+             const tbody = document.getElementById(elementId);
+             if (!tbody) return;
+            if (!ageDistribution || ageDistribution.length === 0) {
+                 tbody.innerHTML = '<tr><td>No age data available.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = ageDistribution.map(group => `
+                <tr>
+                    <th>${group.age_group}</th>
+                    <td>${group.count} couples (${group.percentage}%)</td>
+                </tr>
+            `).join('');
+        }
+
+        // --- Charting Functions ---
+        function updateCharts(data) {
+            // Destroy existing charts before creating new ones
+            Object.values(charts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+            charts = {}; // Reset chart store
+
+            // Reinitialize charts with new data
+            initSummaryChart(data.ageDistribution);
+            initOlderChart(data.olderCouplesAnalysis?.preferences);
+            initYoungerChart(data.youngerCouplesAnalysis?.preferences);
+            initMarriageDurationChart(data.marriageDurationAnalysis?.preferences);
+            initAllCouplesChart(data.allPlansPopularity); // Using overall popularity for this chart
+        }
+
+        function initMarriageDurationChart(preferences) {
+            if (!preferences || preferences.length === 0) return;
+             createOrUpdateChart('marriageDurationChart', {
+                  type: 'bar',
+                 data: {
+                     labels: preferences.map(item => item.travel_plan),
+                     datasets: [{
+                         label: 'Preference (%)',
+                         data: preferences.map(item => item.percentage),
+                         backgroundColor: ['rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)'], // Example colors
+                          borderColor: ['rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)'],
+                         borderWidth: 1
+                     }]
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                      indexAxis: 'y', // Horizontal bars
+                     scales: { x: { beginAtZero: true, max: 100 } },
+                      plugins: { legend: { display: false } }
+                 }
+             });
+        }
+
+        // Helper to create or update a chart
+        function createOrUpdateChart(chartId, config) {
+             const ctx = document.getElementById(chartId)?.getContext('2d');
+             if (!ctx) {
+                 console.error(`Canvas element with ID ${chartId} not found.`);
+                 return null;
+             }
+             if (charts[chartId]) {
+                 charts[chartId].destroy(); // Destroy previous instance if exists
+             }
+             charts[chartId] = new Chart(ctx, config);
+             return charts[chartId];
+         }
+
+         // Specific Chart Initializers
+         function initSummaryChart(ageData) {
+            if (!ageData || ageData.length === 0) return;
+             createOrUpdateChart('summaryChart', {
+                 type: 'pie', // Changed to pie for age distribution
+                 data: {
+                     labels: ageData.map(item => item.age_group),
+                     datasets: [{
+                         label: 'Couples by Age Group',
+                         data: ageData.map(item => item.count),
+                         backgroundColor: [ // Example colors
+                              'rgba(106, 17, 203, 0.7)',
+                              'rgba(37, 117, 252, 0.7)',
+                              'rgba(54, 162, 235, 0.7)',
+                              'rgba(255, 206, 86, 0.7)',
+                              'rgba(75, 192, 192, 0.7)'
+                         ],
+                         borderColor: '#fff',
+                         borderWidth: 1
+                     }]
+                 },
+                  options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     plugins: { legend: { position: 'top' } }
+                 }
+             });
+         }
+
+        function initOlderChart(preferences) {
+            if (!preferences || preferences.length === 0) return;
+             createOrUpdateChart('olderChart', {
+                 type: 'bar',
+                 data: {
+                     labels: preferences.map(item => item.travel_plan),
+                     datasets: [{
+                         label: 'Preference (%)',
+                         data: preferences.map(item => item.percentage),
+                         backgroundColor: 'rgba(92, 184, 92, 0.7)', // Bootstrap info color shade
+                         borderColor: 'rgba(92, 184, 92, 1)',
+                         borderWidth: 1
+                     }]
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     indexAxis: 'y', // Horizontal bars often better for lists
+                     scales: { x: { beginAtZero: true, max: 100 } },
+                     plugins: { legend: { display: false } }
+                 }
+             });
+        }
+
+        function initYoungerChart(preferences) {
+             if (!preferences || preferences.length === 0) return;
+             createOrUpdateChart('youngerChart', {
+                  type: 'bar',
+                 data: {
+                     labels: preferences.map(item => item.travel_plan),
+                     datasets: [{
+                         label: 'Preference (%)',
+                         data: preferences.map(item => item.percentage),
+                         backgroundColor: 'rgba(40, 167, 69, 0.7)', // Bootstrap success color shade
+                         borderColor: 'rgba(40, 167, 69, 1)',
+                         borderWidth: 1
+                     }]
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                      indexAxis: 'y', // Horizontal bars
+                     scales: { x: { beginAtZero: true, max: 100 } },
+                      plugins: { legend: { display: false } }
+                 }
+             });
+        }
+
+         function initAllCouplesChart(allPlans) {
+             if (!allPlans || allPlans.length === 0) return;
+             // Display top N plans for clarity, e.g., top 10
+             const topPlans = allPlans.slice(0, 10);
+             createOrUpdateChart('allChart', {
+                  type: 'bar',
+                 data: {
+                     labels: topPlans.map(item => item.travel_plan),
+                     datasets: [{
+                         label: 'Number of Couples Choosing Plan',
+                         data: topPlans.map(item => item.count),
+                         backgroundColor: 'rgba(108, 117, 125, 0.7)', // Bootstrap secondary color shade
+                          borderColor: 'rgba(108, 117, 125, 1)',
+                         borderWidth: 1
+                     }]
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                      indexAxis: 'y', // Horizontal bars
+                     scales: { x: { beginAtZero: true } },
+                      plugins: { legend: { display: false } }
+                 }
+             });
+        }
+
+
+        // --- Raw Data Tab Functions ---
+        async function fetchRawData(page = 1) {
+            showLoading('load-more-spinner');
+            document.getElementById('load-more-btn').disabled = true;
+            hideError('raw-data-error');
+
+            try {
+                const response = await fetch(`/api/raw-data?page=${page}&limit=${rawDataLimit}`);
+                 if (!response.ok) {
+                     throw new Error(`HTTP error! status: ${response.status}`);
+                 }
+                const result = await response.json();
+
+                 rawDataTotalEntries = result.total;
+                 rawDataTotalPages = result.totalPages;
+                 rawDataCurrentPage = result.page;
+
+                 updateRawDataTable(result.data, page === 1); // Clear table only on first page load
+                 updateRawDataPagination(result);
+
+            } catch(error) {
+                console.error('Raw data fetch failed:', error);
+                 showError('raw-data-error', `Failed to load raw data: ${error.message}`);
+                 document.getElementById('raw-data-table').innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error loading data.</td></tr>`; // Show error in table
+            } finally {
+                hideLoading('load-more-spinner');
+                 // Enable button only if there are more pages
+                document.getElementById('load-more-btn').disabled = (rawDataCurrentPage >= rawDataTotalPages);
+            }
+        }
+
+         function updateRawDataTable(data, clearTable) {
+            const tbody = document.getElementById('raw-data-table');
+            const thead = tbody.previousElementSibling; // Get the <thead>
+
+             if (!data || data.length === 0 && clearTable) {
+                thead.innerHTML = ''; // Clear headers if no data
+                 tbody.innerHTML = '<tr><td colspan="5" class="text-center">No raw data available.</td></tr>';
+                 return;
+             }
+
+            // Generate headers dynamically from the first data row keys
+            if (clearTable && data.length > 0) {
+                 const headers = Object.keys(data[0]);
+                 thead.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+                 tbody.innerHTML = ''; // Clear previous content if refreshing
+            }
+
+             // Append new rows
+            data.forEach(row => {
+                 const tr = document.createElement('tr');
+                 tr.innerHTML = Object.values(row).map(value => `<td>${value ?? ''}</td>`).join('');
+                 tbody.appendChild(tr);
+             });
+         }
+
+         function updateRawDataPagination(result) {
+            const startEntry = (result.page - 1) * result.limit + 1;
+            const endEntry = startEntry + result.data.length - 1;
+            const total = result.total;
+
+            document.getElementById('raw-data-info').textContent = `${total > 0 ? endEntry : 0} of ${total}`;
+             document.getElementById('raw-data-pagination-info').textContent = `Page ${result.page} of ${result.totalPages}`;
+
+             // Show/hide "Load More" button
+            const loadMoreBtn = document.getElementById('load-more-btn');
+            loadMoreBtn.style.display = (result.page < result.totalPages) ? 'inline-block' : 'none';
+            loadMoreBtn.disabled = false; // Re-enable after successful load (if more pages exist)
+         }
+
+        // Function called by "Load More" button
+        function loadMoreData() {
+             if (rawDataCurrentPage < rawDataTotalPages) {
+                fetchRawData(rawDataCurrentPage + 1);
+             }
+         }
+
+        // Function called by refresh button
+        function refreshAnalysis() {
+            fetchData(); // Refetch analysis data
+            fetchRawData(1); // Refetch raw data from page 1
+        }
+
+
+        // --- Initial Load ---
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchData(); // Load analysis data on page load
+            fetchRawData(1); // Load first page of raw data
+
+             // Add listener for the raw data tab to potentially refresh or ensure it's loaded
+             const rawTabElement = document.getElementById('raw-tab');
+             if (rawTabElement) {
+                 rawTabElement.addEventListener('shown.bs.tab', function (event) {
+                     // Optional: Could trigger a refresh if needed when tab becomes visible
+                     // console.log('Raw data tab shown');
+                     // fetchRawData(1); // Example: always reload first page on tab show
+                 });
+             }
+        });
+
+    </script>
+</body>
+</html>
