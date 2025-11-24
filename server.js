@@ -8,6 +8,12 @@ require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Simple in-memory cache for analysis data
+let analysisCache = null;
+let analysisCacheTime = null;
+const CACHE_DURATION = 60000; // 1 minute cache
+
 const pool = mysql.createPool({
     host: process.env.DB_HOST || 'localhost', 
     user: process.env.DB_USER,
@@ -207,6 +213,12 @@ app.post('/upload', async (req, res) => {
         console.log(`Inserted ${values.length} rows.`);
 
         await connection.commit();
+        
+        // Invalidate analysis cache when new data is uploaded
+        analysisCache = null;
+        analysisCacheTime = null;
+        console.log('Analysis cache invalidated');
+        
         res.json({ success: true, message: `Successfully processed ${rawData.length} records.`, count: rawData.length });
 
     } catch (error) {
@@ -222,7 +234,7 @@ app.post('/upload', async (req, res) => {
     }
 });
 
-// Paginated Raw Data Route
+// Paginated Raw Data Route (Optimized)
 app.get('/api/raw-data', async (req, res) => {
     let connection;
     try {
@@ -231,19 +243,33 @@ app.get('/api/raw-data', async (req, res) => {
         const offset = (page - 1) * limit;
 
         connection = await pool.getConnection();
-        const [data] = await connection.query(
-            'SELECT couple_no as `Couple No`, men_age as `Men Age`, women_age as `Women Age`, marriage_duration as `Marriage Age (years)`, travel_plan as `Travel Plan` FROM couples ORDER BY couple_no LIMIT ? OFFSET ?',
-            [limit, offset]
-        );
+        
+        // Use a single query with subquery for total count (more efficient than separate query)
+        const [results] = await connection.query(`
+            SELECT 
+                couple_no as \`Couple No\`, 
+                men_age as \`Men Age\`, 
+                women_age as \`Women Age\`, 
+                marriage_duration as \`Marriage Age (years)\`, 
+                travel_plan as \`Travel Plan\`,
+                (SELECT COUNT(*) FROM couples) as total_count
+            FROM couples 
+            ORDER BY couple_no 
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
 
-        const [totalResult] = await connection.query('SELECT COUNT(*) AS count FROM couples');
-        const total = totalResult[0].count;
+        const data = results.map(row => {
+            const { total_count, ...rowData } = row;
+            return rowData;
+        });
+        
+        const total = results.length > 0 ? results[0].total_count : 0;
 
         res.json({
             data,
             total,
             page,
-            limit, // Also return limit for context
+            limit,
             totalPages: Math.ceil(total / limit)
         });
     } catch (error) {
@@ -254,8 +280,15 @@ app.get('/api/raw-data', async (req, res) => {
     }
 });
 
-// --- Analysis Data Route (Optimized with single query) ---
+// --- Analysis Data Route (Optimized with single query and caching) ---
 app.get('/api/analysis', async (req, res) => {
+    // Check cache first
+    const now = Date.now();
+    if (analysisCache && analysisCacheTime && (now - analysisCacheTime) < CACHE_DURATION) {
+        console.log('Returning cached analysis data');
+        return res.json(analysisCache);
+    }
+
     let connection;
     try {
         connection = await pool.getConnection();
@@ -454,7 +487,7 @@ app.get('/api/analysis', async (req, res) => {
             allDisliked: dislikedPlans.length > 0 ? dislikedPlans[0].travel_plan : 'N/A',
         };
 
-        res.json({
+        const responseData = {
             totalCouples: overallStats.total_couples,
             totalPlans: overallStats.total_plans,
             lastUpdated: new Date().toLocaleString(),
@@ -466,7 +499,14 @@ app.get('/api/analysis', async (req, res) => {
             shortMarriageAnalysis,
             longMarriageAnalysis,
             allPlansPopularity
-        });
+        };
+
+        // Cache the result
+        analysisCache = responseData;
+        analysisCacheTime = now;
+        console.log('Analysis data cached');
+
+        res.json(responseData);
 
     } catch (error) {
         console.error('Analysis data fetch error:', error);
