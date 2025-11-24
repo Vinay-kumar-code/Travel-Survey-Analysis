@@ -1,8 +1,9 @@
 const express = require('express');
 const fileUpload = require('express-fileupload');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const mysql = require('mysql2/promise');
 const path = require('path');
+const compression = require('compression');
 require('dotenv').config();
 
 const app = express();
@@ -33,7 +34,12 @@ async function initializeDatabase() {
                 marriage_duration INT NOT NULL,
                 travel_plan VARCHAR(255) NOT NULL,
                 avg_age DECIMAL(5,2) GENERATED ALWAYS AS ((men_age + women_age) / 2.0) STORED, -- Use 2.0 for decimal division
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_men_age (men_age),
+                INDEX idx_women_age (women_age),
+                INDEX idx_marriage_duration (marriage_duration),
+                INDEX idx_travel_plan (travel_plan),
+                INDEX idx_avg_age (avg_age)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci; -- Good practice for encoding
         `);
         console.log("Table 'couples' checked/created.");
@@ -54,6 +60,9 @@ async function initializeDatabase() {
 }
 
 // --- Middleware ---
+// Enable gzip compression for responses
+app.use(compression());
+
 // Serve static files (CSS, client-side JS) from 'public' directory
 // If your CSS/JS are not in 'public', adjust this or remove it.
 // For this project structure, it seems CSS/JS are inline or via CDN, so this might not be strictly needed.
@@ -107,19 +116,26 @@ app.post('/upload', async (req, res) => {
         connection = await pool.getConnection();
         console.log('Processing file:', file.name);
 
-        const workbook = XLSX.read(file.data, { type: 'buffer' }); // Use buffer type
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        // Use ExcelJS to read the workbook
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(file.data);
+        
+        const worksheet = workbook.worksheets[0];
         if (!worksheet) {
             return res.status(400).json({ error: 'Excel file seems empty or sheet not found.' });
         }
 
         // Get header row
-        const header = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0];
+        const headerRow = worksheet.getRow(1);
+        const headers = [];
+        headerRow.eachCell({ includeEmpty: false }, (cell) => {
+            headers.push(String(cell.value).trim());
+        });
+
         const requiredColumns = ['Couple No', 'Men Age', 'Women Age', 'Marriage Duration', 'Travel Plan'];
 
         // More robust header validation
-        const actualHeaders = header.map(h => String(h).trim()); // Trim whitespace
-        const missingColumns = requiredColumns.filter(col => !actualHeaders.includes(col));
+        const missingColumns = requiredColumns.filter(col => !headers.includes(col));
 
         if (missingColumns.length > 0) {
             console.log('Missing columns:', missingColumns);
@@ -130,8 +146,24 @@ app.post('/upload', async (req, res) => {
             });
         }
 
-        // Convert sheet to JSON using the found headers
-        const rawData = XLSX.utils.sheet_to_json(worksheet);
+        // Convert worksheet to array of objects
+        const rawData = [];
+        worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+            if (rowNumber === 1) return; // Skip header row
+            
+            const rowData = {};
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                const header = headers[colNumber - 1];
+                if (header) {
+                    rowData[header] = cell.value;
+                }
+            });
+            
+            // Only add row if it has data
+            if (Object.keys(rowData).length > 0) {
+                rawData.push(rowData);
+            }
+        });
 
         if (rawData.length === 0) {
              await connection.release();
@@ -222,168 +254,218 @@ app.get('/api/raw-data', async (req, res) => {
     }
 });
 
-// --- Analysis Data Route (Expanded) ---
+// --- Analysis Data Route (Optimized with single query) ---
 app.get('/api/analysis', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
 
-        // --- Overall Stats ---
-        const [totalCouplesRes] = await connection.query('SELECT COUNT(*) AS count FROM couples');
-        const totalCouples = totalCouplesRes[0].count;
-
-        const [distinctPlansRes] = await connection.query('SELECT COUNT(DISTINCT travel_plan) AS count FROM couples');
-        const totalPlans = distinctPlansRes[0].count;
-
-        // --- Age Distribution (Overall) ---
-        const [ageGroupsRes] = await connection.query(`
-            SELECT
-                CASE
-                    WHEN avg_age < 25 THEN 'Under 25'
-                    WHEN avg_age BETWEEN 25 AND 34.99 THEN '25-34' -- Use 34.99 for clarity
-                    WHEN avg_age BETWEEN 35 AND 49.99 THEN '35-49' -- Use 49.99
-                    ELSE '50+'
-                END AS age_group,
-                COUNT(*) AS count,
-                ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage -- Calculate percentage
-            FROM couples
-            GROUP BY age_group
-            ORDER BY MIN(avg_age); -- Order groups logically
+        // Optimized: Use a single query with CTEs to gather all statistics at once
+        const [results] = await connection.query(`
+            WITH 
+            overall_stats AS (
+                SELECT 
+                    COUNT(*) as total_couples,
+                    COUNT(DISTINCT travel_plan) as total_plans
+                FROM couples
+            ),
+            age_groups AS (
+                SELECT
+                    CASE
+                        WHEN avg_age < 25 THEN 'Under 25'
+                        WHEN avg_age BETWEEN 25 AND 34.99 THEN '25-34'
+                        WHEN avg_age BETWEEN 35 AND 49.99 THEN '35-49'
+                        ELSE '50+'
+                    END AS age_group,
+                    COUNT(*) AS count,
+                    ROUND(COUNT(*) * 100.0 / (SELECT total_couples FROM overall_stats), 1) as percentage
+                FROM couples
+                GROUP BY age_group
+                ORDER BY MIN(avg_age)
+            ),
+            older_stats AS (
+                SELECT
+                    'older' as category,
+                    COUNT(*) as count,
+                    AVG(marriage_duration) as avg_marriage_duration
+                FROM couples
+                WHERE men_age >= 50 AND women_age >= 50
+            ),
+            older_plans AS (
+                SELECT 
+                    'older' as category,
+                    travel_plan, 
+                    COUNT(*) as count,
+                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT count FROM older_stats), 0), 1) as percentage
+                FROM couples
+                WHERE men_age >= 50 AND women_age >= 50
+                GROUP BY travel_plan
+                ORDER BY count DESC
+            ),
+            younger_stats AS (
+                SELECT
+                    'younger' as category,
+                    COUNT(*) as count,
+                    AVG(marriage_duration) as avg_marriage_duration
+                FROM couples
+                WHERE men_age < 35 AND women_age < 35
+            ),
+            younger_plans AS (
+                SELECT 
+                    'younger' as category,
+                    travel_plan, 
+                    COUNT(*) as count,
+                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT count FROM younger_stats), 0), 1) as percentage
+                FROM couples
+                WHERE men_age < 35 AND women_age < 35
+                GROUP BY travel_plan
+                ORDER BY count DESC
+            ),
+            short_marriage_stats AS (
+                SELECT
+                    'short' as category,
+                    COUNT(*) as count,
+                    AVG(marriage_duration) as avg_marriage_duration
+                FROM couples
+                WHERE marriage_duration < 10
+            ),
+            short_marriage_plans AS (
+                SELECT 
+                    'short' as category,
+                    travel_plan, 
+                    COUNT(*) as count,
+                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT count FROM short_marriage_stats), 0), 1) as percentage
+                FROM couples
+                WHERE marriage_duration < 10
+                GROUP BY travel_plan
+                ORDER BY count DESC
+            ),
+            long_marriage_stats AS (
+                SELECT
+                    'long' as category,
+                    COUNT(*) as count,
+                    AVG(marriage_duration) as avg_marriage_duration
+                FROM couples
+                WHERE marriage_duration >= 10
+            ),
+            long_marriage_plans AS (
+                SELECT 
+                    'long' as category,
+                    travel_plan, 
+                    COUNT(*) as count,
+                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT count FROM long_marriage_stats), 0), 1) as percentage
+                FROM couples
+                WHERE marriage_duration >= 10
+                GROUP BY travel_plan
+                ORDER BY count DESC
+            ),
+            all_plans AS (
+                SELECT 
+                    travel_plan, 
+                    COUNT(*) as count
+                FROM couples
+                GROUP BY travel_plan
+                ORDER BY count DESC
+            )
+            SELECT 
+                'overall_stats' as result_type, 
+                JSON_OBJECT('total_couples', total_couples, 'total_plans', total_plans) as data
+            FROM overall_stats
+            UNION ALL
+            SELECT 'age_groups', JSON_ARRAYAGG(JSON_OBJECT('age_group', age_group, 'count', count, 'percentage', percentage))
+            FROM age_groups
+            UNION ALL
+            SELECT 'older_stats', JSON_OBJECT('count', count, 'avg_marriage_duration', ROUND(avg_marriage_duration, 1))
+            FROM older_stats
+            UNION ALL
+            SELECT 'older_plans', JSON_ARRAYAGG(JSON_OBJECT('travel_plan', travel_plan, 'count', count, 'percentage', percentage))
+            FROM older_plans
+            UNION ALL
+            SELECT 'younger_stats', JSON_OBJECT('count', count, 'avg_marriage_duration', ROUND(avg_marriage_duration, 1))
+            FROM younger_stats
+            UNION ALL
+            SELECT 'younger_plans', JSON_ARRAYAGG(JSON_OBJECT('travel_plan', travel_plan, 'count', count, 'percentage', percentage))
+            FROM younger_plans
+            UNION ALL
+            SELECT 'short_marriage_stats', JSON_OBJECT('count', count, 'avg_marriage_duration', ROUND(avg_marriage_duration, 1))
+            FROM short_marriage_stats
+            UNION ALL
+            SELECT 'short_marriage_plans', JSON_ARRAYAGG(JSON_OBJECT('travel_plan', travel_plan, 'count', count, 'percentage', percentage))
+            FROM short_marriage_plans
+            UNION ALL
+            SELECT 'long_marriage_stats', JSON_OBJECT('count', count, 'avg_marriage_duration', ROUND(avg_marriage_duration, 1))
+            FROM long_marriage_stats
+            UNION ALL
+            SELECT 'long_marriage_plans', JSON_ARRAYAGG(JSON_OBJECT('travel_plan', travel_plan, 'count', count, 'percentage', percentage))
+            FROM long_marriage_plans
+            UNION ALL
+            SELECT 'all_plans', JSON_ARRAYAGG(JSON_OBJECT('travel_plan', travel_plan, 'count', count))
+            FROM all_plans
         `);
-        const ageDistribution = ageGroupsRes;
 
+        // Parse the results into the expected format
+        const parsedResults = {};
+        results.forEach(row => {
+            parsedResults[row.result_type] = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+        });
 
-        // --- Older Couples Analysis (Example: Both partners >= 50) ---
-        const [olderStats] = await connection.query(`
-            SELECT
-                AVG(marriage_duration) as avg_marriage_duration,
-                COUNT(*) as count
-            FROM couples
-            WHERE men_age >= 50 AND women_age >= 50;
-        `);
+        const overallStats = parsedResults.overall_stats || { total_couples: 0, total_plans: 0 };
+        const ageDistribution = parsedResults.age_groups || [];
+        const olderStats = parsedResults.older_stats || { count: 0, avg_marriage_duration: 0 };
+        const olderPlans = parsedResults.older_plans || [];
+        const youngerStats = parsedResults.younger_stats || { count: 0, avg_marriage_duration: 0 };
+        const youngerPlans = parsedResults.younger_plans || [];
+        const shortMarriageStats = parsedResults.short_marriage_stats || { count: 0, avg_marriage_duration: 0 };
+        const shortMarriagePlans = parsedResults.short_marriage_plans || [];
+        const longMarriageStats = parsedResults.long_marriage_stats || { count: 0, avg_marriage_duration: 0 };
+        const longMarriagePlans = parsedResults.long_marriage_plans || [];
+        const allPlansPopularity = parsedResults.all_plans || [];
 
-        const [olderPlansRes] = await connection.query(`
-            SELECT travel_plan, COUNT(*) as count,
-                   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage
-            FROM couples
-            WHERE men_age >= 50 AND women_age >= 50
-            GROUP BY travel_plan
-            ORDER BY count DESC;
-            -- LIMIT 6; -- Limit if needed for display
-        `);
+        // Build response structure
         const olderCouplesAnalysis = {
-            count: olderStats[0].count || 0,
-            avgMarriageDuration: olderStats[0].avg_marriage_duration ? parseFloat(olderStats[0].avg_marriage_duration).toFixed(1) : 'N/A',
-            preferences: olderPlansRes
+            count: olderStats.count || 0,
+            avgMarriageDuration: olderStats.avg_marriage_duration || 'N/A',
+            preferences: olderPlans
         };
 
-        // --- Younger Couples Analysis (Example: Both partners < 35) ---
-         const [youngerStats] = await connection.query(`
-            SELECT
-                AVG(marriage_duration) as avg_marriage_duration,
-                COUNT(*) as count
-            FROM couples
-            WHERE men_age < 35 AND women_age < 35;
-        `);
-
-        const [youngerPlansRes] = await connection.query(`
-            SELECT travel_plan, COUNT(*) as count,
-                   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage
-            FROM couples
-            WHERE men_age < 35 AND women_age < 35
-            GROUP BY travel_plan
-            ORDER BY count DESC;
-            -- LIMIT 6; -- Limit if needed for display
-        `);
-         const youngerCouplesAnalysis = {
-            count: youngerStats[0].count || 0,
-            avgMarriageDuration: youngerStats[0].avg_marriage_duration ? parseFloat(youngerStats[0].avg_marriage_duration).toFixed(1) : 'N/A',
-          preferences: youngerPlansRes
+        const youngerCouplesAnalysis = {
+            count: youngerStats.count || 0,
+            avgMarriageDuration: youngerStats.avg_marriage_duration || 'N/A',
+            preferences: youngerPlans
         };
 
-        // --- Marriage Duration Analysis ---
-        const [shortMarriageStats] = await connection.query(`
-            SELECT
-                AVG(marriage_duration) as avg_marriage_duration,
-                COUNT(*) as count
-            FROM couples
-            WHERE marriage_duration < 10;
-        `);
-
-        const [shortMarriagePlansRes] = await connection.query(`
-            SELECT travel_plan, COUNT(*) as count,
-                   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage
-            FROM couples
-            WHERE marriage_duration < 10
-            GROUP BY travel_plan
-            ORDER BY count DESC;
-            -- LIMIT 6; -- Limit if needed for display
-        `);
-         const shortMarriageAnalysis = {
-            count: shortMarriageStats[0].count || 0,
-            avgMarriageDuration: shortMarriageStats[0].avg_marriage_duration ? parseFloat(shortMarriageStats[0].avg_marriage_duration).toFixed(1) : 'N/A',
-            preferences: shortMarriagePlansRes
+        const shortMarriageAnalysis = {
+            count: shortMarriageStats.count || 0,
+            avgMarriageDuration: shortMarriageStats.avg_marriage_duration || 'N/A',
+            preferences: shortMarriagePlans
         };
 
-        const [longMarriageStats] = await connection.query(`
-            SELECT
-                AVG(marriage_duration) as avg_marriage_duration,
-                COUNT(*) as count
-            FROM couples
-            WHERE marriage_duration >= 10;
-        `);
-
-        const [longMarriagePlansRes] = await connection.query(`
-            SELECT travel_plan, COUNT(*) as count,
-                   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage
-            FROM couples
-            WHERE marriage_duration >= 10
-            GROUP BY travel_plan
-            ORDER BY count DESC;
-            -- LIMIT 6; -- Limit if needed for display
-        `);
-         const longMarriageAnalysis = {
-            count: longMarriageStats[0].count || 0,
-            avgMarriageDuration: longMarriageStats[0].avg_marriage_duration ? parseFloat(longMarriageStats[0].avg_marriage_duration).toFixed(1) : 'N/A',
-            preferences: longMarriagePlansRes
+        const longMarriageAnalysis = {
+            count: longMarriageStats.count || 0,
+            avgMarriageDuration: longMarriageStats.avg_marriage_duration || 'N/A',
+            preferences: longMarriagePlans
         };
 
+        const dislikedPlans = [...allPlansPopularity].sort((a, b) => a.count - b.count).slice(0, 5);
 
-        // --- Overall Plan Popularity (Top and Bottom) ---
-        const [allPlansPopularity] = await connection.query(`
-            SELECT travel_plan, COUNT(*) as count
-            FROM couples
-            GROUP BY travel_plan
-            ORDER BY count DESC;
-        `);
-
-        const mostLikedOverall = allPlansPopularity.length > 0 ? allPlansPopularity[0] : { travel_plan: 'N/A', count: 0 };
-        const leastLikedOverall = allPlansPopularity.length > 0 ? allPlansPopularity[allPlansPopularity.length - 1] : { travel_plan: 'N/A', count: 0 };
-
-        // We interpret "disliked" as least popular among all choices for this example.
-        // A real survey might have a "dislike" score.
-        const dislikedPlans = [...allPlansPopularity].sort((a, b) => a.count - b.count).slice(0, 5); // Get bottom 5
-
-        // --- Summary Findings ---
         const summary = {
             olderFavorite: olderCouplesAnalysis.preferences.length > 0 ? olderCouplesAnalysis.preferences[0].travel_plan : 'N/A',
             youngerFavorite: youngerCouplesAnalysis.preferences.length > 0 ? youngerCouplesAnalysis.preferences[0].travel_plan : 'N/A',
-            // Using least popular overall as "most disliked"
             allDisliked: dislikedPlans.length > 0 ? dislikedPlans[0].travel_plan : 'N/A',
         };
 
         res.json({
-            totalCouples,
-            totalPlans,
-            lastUpdated: new Date().toLocaleString(), // More readable format
-            ageDistribution, // Overall age distribution
+            totalCouples: overallStats.total_couples,
+            totalPlans: overallStats.total_plans,
+            lastUpdated: new Date().toLocaleString(),
+            ageDistribution,
             olderCouplesAnalysis,
             youngerCouplesAnalysis,
-            dislikedPlans, // Least popular overall (bottom 5)
-            summary, // Specific findings for summary cards
+            dislikedPlans,
+            summary,
             shortMarriageAnalysis,
             longMarriageAnalysis,
-            allPlansPopularity // Full list if needed by 'All Couples' tab chart
+            allPlansPopularity
         });
 
     } catch (error) {
