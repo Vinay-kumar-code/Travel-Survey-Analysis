@@ -10,9 +10,32 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Simple in-memory cache for analysis data
-let analysisCache = null;
-let analysisCacheTime = null;
+let analysisCache = {
+    data: null,
+    expiresAt: null
+};
 const CACHE_DURATION = 60000; // 1 minute cache
+
+// Cache management helper
+function invalidateAnalysisCache() {
+    analysisCache.data = null;
+    analysisCache.expiresAt = null;
+    console.log('Analysis cache invalidated');
+}
+
+function setAnalysisCache(data) {
+    analysisCache.data = data;
+    analysisCache.expiresAt = Date.now() + CACHE_DURATION;
+    console.log('Analysis data cached');
+}
+
+function getAnalysisCache() {
+    if (analysisCache.data && analysisCache.expiresAt && Date.now() < analysisCache.expiresAt) {
+        console.log('Returning cached analysis data');
+        return analysisCache.data;
+    }
+    return null;
+}
 
 const pool = mysql.createPool({
     host: process.env.DB_HOST || 'localhost', 
@@ -215,9 +238,7 @@ app.post('/upload', async (req, res) => {
         await connection.commit();
         
         // Invalidate analysis cache when new data is uploaded
-        analysisCache = null;
-        analysisCacheTime = null;
-        console.log('Analysis cache invalidated');
+        invalidateAnalysisCache();
         
         res.json({ success: true, message: `Successfully processed ${rawData.length} records.`, count: rawData.length });
 
@@ -283,10 +304,9 @@ app.get('/api/raw-data', async (req, res) => {
 // --- Analysis Data Route (Optimized with single query and caching) ---
 app.get('/api/analysis', async (req, res) => {
     // Check cache first
-    const now = Date.now();
-    if (analysisCache && analysisCacheTime && (now - analysisCacheTime) < CACHE_DURATION) {
-        console.log('Returning cached analysis data');
-        return res.json(analysisCache);
+    const cachedData = getAnalysisCache();
+    if (cachedData) {
+        return res.json(cachedData);
     }
 
     let connection;
@@ -329,7 +349,7 @@ app.get('/api/analysis', async (req, res) => {
                     'older' as category,
                     travel_plan, 
                     COUNT(*) as count,
-                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT count FROM older_stats), 0), 1) as percentage
+                    ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) as percentage
                 FROM couples
                 WHERE men_age >= 50 AND women_age >= 50
                 GROUP BY travel_plan
@@ -348,7 +368,7 @@ app.get('/api/analysis', async (req, res) => {
                     'younger' as category,
                     travel_plan, 
                     COUNT(*) as count,
-                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT count FROM younger_stats), 0), 1) as percentage
+                    ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) as percentage
                 FROM couples
                 WHERE men_age < 35 AND women_age < 35
                 GROUP BY travel_plan
@@ -367,7 +387,7 @@ app.get('/api/analysis', async (req, res) => {
                     'short' as category,
                     travel_plan, 
                     COUNT(*) as count,
-                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT count FROM short_marriage_stats), 0), 1) as percentage
+                    ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) as percentage
                 FROM couples
                 WHERE marriage_duration < 10
                 GROUP BY travel_plan
@@ -386,7 +406,7 @@ app.get('/api/analysis', async (req, res) => {
                     'long' as category,
                     travel_plan, 
                     COUNT(*) as count,
-                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT count FROM long_marriage_stats), 0), 1) as percentage
+                    ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) as percentage
                 FROM couples
                 WHERE marriage_duration >= 10
                 GROUP BY travel_plan
@@ -502,9 +522,7 @@ app.get('/api/analysis', async (req, res) => {
         };
 
         // Cache the result
-        analysisCache = responseData;
-        analysisCacheTime = now;
-        console.log('Analysis data cached');
+        setAnalysisCache(responseData);
 
         res.json(responseData);
 
